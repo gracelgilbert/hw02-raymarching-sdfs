@@ -10,6 +10,134 @@ out vec4 out_Col;
 float epsilon = 0.0001;
 float pi = 3.1415926535;
 
+float random1( vec2 p , vec2 seed) {
+  return fract(sin(dot(p + seed, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float random1( vec3 p , vec3 seed) {
+  return fract(sin(dot(p + seed, vec3(987.654, 123.456, 531.975))) * 85734.3545);
+}
+
+vec2 random2( vec2 p , vec2 seed) {
+  return fract(sin(vec2(dot(p + seed, vec2(311.7, 127.1)), dot(p + seed, vec2(269.5, 183.3)))) * 85734.3545);
+}
+
+float interpNoise2d(float x, float y) {
+  float intX = floor(x);
+  float fractX = fract(x);
+  float intY = floor(y);
+  float fractY = fract(y);
+
+  float v1 = random1(vec2(intX, intY), vec2(1.f, 1.f));
+  float v2 = random1(vec2(intX + 1.f, intY), vec2(1.f, 1.f));
+  float v3 = random1(vec2(intX, intY + 1.f), vec2(1.f, 1.f));
+  float v4 = random1(vec2(intX + 1.f, intY + 1.f), vec2(1.f, 1.f));
+
+  float i1 = mix(v1, v2, fractX);
+  float i2 = mix(v3, v4, fractX);
+  return mix(i1, i2, fractY);
+  return 2.0;
+
+}
+
+
+float interpNoise3d(float x, float y, float z) {
+  float intX = floor(x);
+  float fractX = fract(x);
+  float intY = floor(y);
+  float fractY = fract(y);
+  float intZ = floor(z);
+  float fractZ = fract(z);
+
+  float v1 = random1(vec3(intX, intY, intZ), vec3(1.f, 1.f, 1.f));
+  float v2 = random1(vec3(intX, intY, intZ + 1.0), vec3(1.f, 1.f, 1.f));
+  float v3 = random1(vec3(intX + 1.0, intY, intZ + 1.0), vec3(1.f, 1.f, 1.f));
+  float v4 = random1(vec3(intX + 1.0, intY, intZ), vec3(1.f, 1.f, 1.f));
+  float v5 = random1(vec3(intX, intY + 1.0, intZ), vec3(1.f, 1.f, 1.f));
+  float v6 = random1(vec3(intX, intY + 1.0, intZ + 1.0), vec3(1.f, 1.f, 1.f));
+  float v7 = random1(vec3(intX + 1.0, intY + 1.0, intZ + 1.0), vec3(1.f, 1.f, 1.f));
+  float v8 = random1(vec3(intX + 1.0, intY + 1.0, intZ), vec3(1.f, 1.f, 1.f));
+
+  float i1 = mix(v2, v3, fractX);
+  float i2 = mix(v1, v4, fractX);
+  float i3 = mix(v6, v7, fractX);
+  float i4 = mix(v5, v8, fractX);
+
+  float j1 = mix(i4, i3, fractZ);
+  float j2 = mix(i2, i1, fractZ);
+
+  return mix(j2, j1, fractY);
+
+}
+
+float computeWorley(float x, float y, float numRows, float numCols) {
+    float xPos = x * float(numCols) / 20.f;
+    float yPos = y * float(numRows) / 20.f;
+
+    float minDist = 60.f;
+    vec2 minVec = vec2(0.f, 0.f);
+
+    for (int i = -1; i < 2; i++) {
+        for (int j = -1; j < 2; j++) {
+            vec2 currGrid = vec2(floor(float(xPos)) + float(i), floor(float(yPos)) + float(j));
+            vec2 currNoise = currGrid + random2(currGrid, vec2(2.0, 1.0));
+            float currDist = distance(vec2(xPos, yPos), currNoise);
+            if (currDist <= minDist) {
+                minDist = currDist;
+                minVec = currNoise;
+            }
+        }
+    }
+    return minDist;
+    // return 2.0;
+}
+
+float fbmWorley(float x, float y, float height, float xScale, float yScale) {
+  float total = 0.f;
+  float persistence = 0.5f;
+  int octaves = 4;
+  float freq = 2.0;
+  float amp = 1.0;
+  for (int i = 0; i < octaves; i++) {
+    // total += interpNoise2d( (x / xScale) * freq, (y / yScale) * freq) * amp;
+    total += computeWorley( (x / xScale) * freq, (y / yScale) * freq, 2.0, 2.0) * amp;
+    freq *= 2.0;
+    amp *= persistence;
+  }
+  return height * total;
+}
+
+float fbm(float x, float y, float height, float xScale, float yScale) {
+  float total = 0.f;
+  float persistence = 0.5f;
+  int octaves = 8;
+  float freq = 2.0;
+  float amp = 1.0;
+  for (int i = 0; i < octaves; i++) {
+    // total += interpNoise2d( (x / xScale) * freq, (y / yScale) * freq) * amp;
+    total += interpNoise2d( (x / xScale) * freq, (y / yScale) * freq) * amp;
+    freq *= 2.0;
+    amp *= persistence;
+  }
+  return height * total;
+}
+
+float fbm3D(float x, float y, float z, float height, float xScale, float yScale, float zScale) {
+  float total = 0.f;
+  float persistence = 0.5f;
+  int octaves = 8;
+  float freq = 2.0;
+  float amp = 1.0;
+  for (int i = 0; i < octaves; i++) {
+    // total += interpNoise2d( (x / xScale) * freq, (y / yScale) * freq) * amp;
+    total += interpNoise3d( (x / xScale) * freq, (y / yScale) * freq, (z / zScale) * freq) * amp;
+    freq *= 2.0;
+    amp *= persistence;
+  }
+  return height * total;
+}
+
+
 vec3 castRay(vec3 eye) {
   float a = fs_Pos.x;
   float b = fs_Pos.y;
@@ -23,8 +151,6 @@ vec3 castRay(vec3 eye) {
 
   return normalize(point);
 }
-
-
 
 float sphereSDF( vec3 p, float radius ) {
   return length(p)-radius;
@@ -98,6 +224,114 @@ bool boundingSphereIntersect(vec3 dir, vec3 origin, vec3 center, float radius, o
   return false;
 }
 
+vec4 topWingColor(vec3 normal, vec3 point, vec3 dir) {
+  float theta1 = pi / 2.0;
+  float theta2 = pi;
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
+  if (point.z < 0.0) {
+    thetaAnim *= -1.0;
+  }
+  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
+                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
+                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
+                           );  
+
+    point = ((point * wingAnimationRotation));
+    vec3 color1 = vec3(0.5, 0.8, 1.0);
+    float textureTheta = -pi/9.0;
+    if (point.z < 0.0) {
+      textureTheta *= -1.0;
+    }
+    mat3 textureRotation = mat3(vec3(cos(textureTheta), 0, sin(textureTheta)),
+                           vec3(0, 1, 0),
+                           vec3(-sin(textureTheta), 0, cos(textureTheta))
+                           );
+    vec3 texturePoint = point * textureRotation;
+    float mask = 1.0 - 1.4 * floor(12.0 * computeWorley(texturePoint.x, texturePoint.z, 15.0, 50.0)) / 12.0;
+    float distFromCenter = sqrt(point.x * point.x + point.z * point.z);
+    distFromCenter += 0.35 * (fbm(point.x, point.z, 1.0, 0.4, 0.4) * 2.0 - 1.0);
+    color1 *= mask;
+
+    vec3 color2 = vec3(0.9, 0.5, 0.3);
+    // float mask2 = computeWorley(point.x, point.z, 100.0, 100.0);
+    float mask2 = fbm3D(point.x, point.y, point.z, 1.0, 0.2, 0.2, 0.2);
+    color2 *= mask2;
+
+    if (distFromCenter > 5.5 ) {
+      color1 = color2;
+    }
+    if (distFromCenter > 6.5 && distFromCenter < 7.0 || distFromCenter > 5.5 && distFromCenter < 6.0) {
+      color1 = vec3(0.0);
+    }
+
+    vec4 diffuseColor = vec4(color1, 1.0);
+    float diffuseTerm = dot(normalize(normal), normalize(vec3(1.0, 0.5, -1.0)));
+    float ambientTerm = 0.2;
+    float lightIntensity = diffuseTerm + ambientTerm;
+  return vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);
+}
+
+vec4 bottomWingColor(vec3 normal, vec3 point, vec3 dir) {
+  vec3 color1 = vec3(0.9, 0.5, 0.8);
+  vec3 color2 = vec3(0.7, 0.7, 0.4);
+
+  float theta1 = pi / 2.0;
+  float theta2 = pi;
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
+  if (point.z < 0.0) {
+    thetaAnim *= -1.0;
+  }
+  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
+                                    vec3(0, cos(thetaAnim), sin(thetaAnim)), // FIX SIGNS FOR Y ROTATION!!!!!!!!!!!!!!!!!!!!!!
+                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
+                           );  
+
+    point = ((point * wingAnimationRotation));
+    // vec3 color1 = vec3(0.5, 0.8, 1.0);
+    float textureTheta = pi/4.0;
+    if (point.z < 0.0) {
+      textureTheta *= -1.0;
+    }
+    mat3 textureRotation = mat3(vec3(cos(textureTheta), 0, sin(textureTheta)),
+                           vec3(0, 1, 0),
+                           vec3(-sin(textureTheta), 0, cos(textureTheta))
+                           );
+    vec3 texturePoint = point * textureRotation;
+    float mask = 1.0 - 1.4 * floor(12.0 * computeWorley(texturePoint.x, texturePoint.z, 15.0, 45.0)) / 12.0;
+    float distFromCenter = sqrt(point.x * point.x + point.z * point.z);
+
+    distFromCenter += 0.35 * (fbm(point.x, point.z, 1.0, 0.4, 0.4) * 2.0 - 1.0);
+    color1 *= mask;
+
+
+    // vec3 color2 = vec3(0.9, 0.5, 0.3);
+    // float mask2 = computeWorley(point.x, point.z, 100.0, 100.0);
+    float mask2 = fbm3D(point.x, point.y, point.z, 1.0, 0.2, 0.2, 0.2);
+    color2 *= mask2;
+
+    if (distFromCenter > 5.5 ) {
+      color1 = color2;
+    }
+    if (distFromCenter > 6.5 && distFromCenter < 7.0 || distFromCenter > 5.5 && distFromCenter < 6.0) {
+      color1 = vec3(0.0);
+    }
+
+    vec4 diffuseColor = vec4(color1, 1.0);
+    float diffuseTerm = dot(normalize(normal), normalize(vec3(1.0, 0.5, -1.0)));
+    float ambientTerm = 0.2;
+    float lightIntensity = diffuseTerm + ambientTerm;
+  return vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);
+}
+
+vec4 bodyColor(vec3 normal, vec3 point, vec3 dir) {
+    vec4 diffuseColor = vec4(0.1, 0.1, 0.1, 1.0);
+    float diffuseTerm = dot(normalize(normal), normalize(vec3(1.0, 0.5, -1.0)));
+    float ambientTerm = 0.2;
+    float lightIntensity = diffuseTerm + ambientTerm;
+  return vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);
+  
+}
+
 
 vec3 getSphereNormal(vec3 p, float t) {
   return normalize(vec3(  sphereSDF(vec3(p[0] + 0.001, p[1], p[2]), t) - sphereSDF(vec3(p[0] - 0.001, p[1], p[2]), t),
@@ -165,7 +399,7 @@ float topRightWingSDF(vec3 p) {
                            );
   float theta1 = pi / 2.0;
   float theta2 = pi;
-  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  5.0) + 1.0));
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
   mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
                                     vec3(0, cos(thetaAnim), sin(thetaAnim)),
                                     vec3(0, -sin(thetaAnim), cos(thetaAnim))
@@ -195,7 +429,7 @@ float topLeftWingSDF(vec3 p) {
                            );
   float theta1 = pi / 2.0;
   float theta2 = pi;
-  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  5.0) + 1.0));
+  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
   mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
                                     vec3(0, cos(thetaAnim), sin(thetaAnim)),
                                     vec3(0, -sin(thetaAnim), cos(thetaAnim))
@@ -224,7 +458,7 @@ float bottomRightWingSDF(vec3 p) {
                            );
   float theta1 = pi / 2.0;
   float theta2 = pi;
-  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  5.0) + 1.0));
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
   mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
                                     vec3(0, cos(thetaAnim), sin(thetaAnim)),
                                     vec3(0, -sin(thetaAnim), cos(thetaAnim))
@@ -253,7 +487,7 @@ float bottomLeftWingSDF(vec3 p) {
                            );
   float theta1 = pi / 2.0;
   float theta2 = pi;
-  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  5.0) + 1.0));
+  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
   mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
                                     vec3(0, cos(thetaAnim), sin(thetaAnim)),
                                     vec3(0, -sin(thetaAnim), cos(thetaAnim))
@@ -379,7 +613,7 @@ bool bodyBoudningSphere(vec3 dir, vec3 origin, out float dist) {
   return boundingSphereIntersect(dir, origin, center, radius, dist);
 }
 
-float sceneSDF(vec3 dir, vec3 p, out vec3 nor) {
+float sceneSDF(vec3 dir, vec3 p, out vec3 nor, out vec4 col) {
   float topWingDistance = topWingSDF(dir, p);
   float bottomWingDistance = bottomWingSDF(dir, p);
   float bodyDistance = bodySDF(p);
@@ -400,22 +634,25 @@ float sceneSDF(vec3 dir, vec3 p, out vec3 nor) {
 
   if (topWingDistance < bodyDistance && topWingDistance < bottomWingDistance) {
     nor = getTopWingNormal(dir, p);
+    col = topWingColor(nor, p, dir);
     return topWingDistance;
   } else if (bodyDistance < bottomWingDistance){
     nor = getBodyNormal(p);
+    col = bodyColor(nor, p, dir);
     return bodyDistance;
   } else {
     nor = getBottomWingNormal(dir, p);
+    col = bottomWingColor(nor, p, dir);
     return bottomWingDistance;
   }
 }
 
 float pCurve (float x, float a, float b) {
-  float k = powf(a + b, a + b) / (pow(a, a) * pos(b, b));
-  return k * powf(x, a) * powf(1.0 - x, b);
+  float k = pow(a + b, a + b) / (pow(a, a) * pow(b, b));
+  return k * pow(x, a) * pow(1.0 - x, b);
 }
 
-bool rayMarch(vec3 dir, out vec3 nor) {
+bool rayMarch(vec3 dir, out vec3 nor, out vec4 col) {
 
   float depth = 0.0;
   float dist = 0.0;
@@ -425,22 +662,24 @@ bool rayMarch(vec3 dir, out vec3 nor) {
     return false;
   }
 
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < 200; i++) {
     vec3 currPoint = u_Eye + depth * dir;
-    currPoint.y += sin(u_Time / 10.0);
+    // currPoint.y += sin(u_Time / 10.0);
+    // break up a and b with some noise
+    currPoint.y += pCurve(0.5 * sin(u_Time / 10.0) + 0.5, 2.0, 4.0);
 
-    float yOffset1 = 3.0;
+    // float yOffset1 = 3.0;
 
-    float gain = 0.0;
+    // float gain = 0.0;
 
     vec3 normal;
-    dist = sceneSDF(dir, currPoint, normal);
+    dist = sceneSDF(dir, currPoint, normal, col);
     if (dist < epsilon) {
         nor = normal;
         return true;
     }
     depth += dist;
-    if (depth > 50.0) {
+    if (depth > 30.0) {
       nor = vec3(0.0, 0.0, 0.0);
       return false;
     }
@@ -452,16 +691,11 @@ bool rayMarch(vec3 dir, out vec3 nor) {
 
 void main() {
   vec3 normal = vec3(1.0, 1.0, 1.0);
-
-  if (rayMarch(castRay(u_Eye), normal)) {
-    vec4 diffuseColor = vec4(1.0, 0.0, 1.0, 1.0);
-    float diffuseTerm = dot(normalize(normal), normalize(vec3(1.0, 0.5, -1.0)));
-    float ambientTerm = 0.2;
-    float lightIntensity = diffuseTerm + ambientTerm;
-
-    out_Col = vec4(vec3(diffuseTerm, diffuseTerm, diffuseTerm), diffuseColor.a);
+  vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
+  if (rayMarch(castRay(u_Eye), normal, color)) {
+    out_Col = color;
   } else {
-    out_Col = vec4(0.5 * (castRay(u_Eye - vec3(u_Time / 2.0, 0.0, 0.0)) + vec3(1.0, 1.0, 1.0)), 1.0);
+    out_Col = vec4(0.5 * (castRay(u_Eye) + vec3(1.0, 1.0, 1.0)), 1.0);
     // out_Col = vec4(0.5, 0.5, 0.5, 1.0);
   }
 
