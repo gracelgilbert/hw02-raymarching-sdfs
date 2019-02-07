@@ -20,7 +20,9 @@ Over the summer, I used Houdini to generate procedural butterfly patterns which 
 The body of the butterfly is generally made up of three modified SDF spheres. These three sections are smoothly blended together using smooth union with a k value of 0.6, making the body look like it is one solid form.
 - The center sphere is a simple SDF sphere of radius 1. 
 - The tail of the butterfly is a sphere elongated in the x direction, accomplished by scaling the test point down in x to 0.3X the original. I then created a bumpy stripe pattern on the tail by offsetting the test point inward along the normal according to a sin curve. By offsetting the point inward, it inversely pushed the geometry outwards, forming raised stripes. I clamped the sin curve to be between 0.5 and 1.0, preventing the geometry from getting pushed in, and creating larger valleys than peaks in the curve. I also raised it to a power of 0.1 to smooth out the transition. 
-- The head of the butterfly is an SDF sphere with two scaled spheres subtracted from it. These two spheres are elongated vertically, as well as elongated along x to carve deeper into the main sphere and create a more defined look. They are then translated to be on either side of the head.
+- The head of the butterfly is an SDF sphere with two scaled spheres subtracted from it. These two spheres are elongated vertically, as well as elongated along x to carve deeper into the main sphere and create a more defined look. They are then translated to be on either side of the head. Below is a close up of the subtraction for the eye shapes.
+![](Face.png)
+
 #### Wings
 The wings are created by intersecting a round cone and a thin box, both created with SDFs.
 - The cones are rotated to be along the z axis, and then rotated about the y axis to be correctly angled against the butterfly. The top wings are rotated up by pi/13 degrees, and the bottom wings are rotated down by pi/3.65 degrees. The radii of the cone are scaled so that the side touching the butterfly comes to a sharp point, and the opposite end is wide and rounded with a rounding parameter value of 5.0.
@@ -41,6 +43,18 @@ I created three textures for the butterfly, one for the body, one for the wings,
 
 - The sky texture is a layering of two fbm functions that map out two slightly different shades and shapes of clouds on top of a blue backdrop. One fbm function is very elongated in the x direction, creating longer, thin clouds. These have a pink hue. I scaled down the contribution of these to make them somewhat subtle. Layered on top of these clouds are larger, less elongated white clouds. These clouds look puffier and fuller and are more prominent. 
 ### Animation
+Three features of the scene are animated, the wings, the body, and the sky. These animations make the butterfly appear to be flying through the sky. The user can modify the speed of the butterfly, which is taken in as a paremeter to scale the time paremeter to speed up or slow down the butterfly. For example, if the user increases the speed value to 2.0, the time value used to animate is scaled by 2.0, doubling the speed of all aspects of the animation, making the butterfly fly faster.
 #### Wings
+- The wings are rotated about the body of the butterfly according to a smoothstepped sin curve the angle of animation is calculated by the following function:
+
+smoothstep(-pi/2.0, pi,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0))
+
+The sin curve produces the repeated cyclic motion, and the smoothstep makes the wing flapping look more realistic, rather than animating along an even sinusoidal curve. 
+- I then apply an animated 3D fbm offset to the wings to give them an effect of fluttering in the wind. This fbm offsets the position of the test point, creating soft ripples in the wings. The fbm is animated so that these ripples move from left to right along the wing, looking as if the wind is blowing onto the wings from left to right. The vertical component of the 3D fbm is very elongated so there is not much variation in the ripples as the wings move up and down, but I wanted there to be a little bit of this variation, which is why I chose a 3D fbm rather than 2D. 
+
 #### Body
+The body of the butterfly is animated vertically up and down according to a layering of two power curves. These power curves provide an animation pattern that is not as consistent as a sin curve. I still take the sin of time to get the cyclic pattern, but the power curves break up the regular wave pattern. Layering the two together made the movement look more natural and random, but still cyclic, keeping the butterfly at a steady height. One power function has it's peak closer to 0, and the other has it's peak closer to 1, but they are not symmetric, so the animation is varied across the entire range of the cycle. The expression for the animation is as follows:
+
+currPoint.y += pCurve(0.5 * sin(u_Speed * u_Time / 7.0) + 0.5, 2.0, 5.0) + 0.5 * pCurve(0.5 * sin(u_Speed * u_Time / 7.0) + 0.5, 6.0, 1.0);
+
 #### Sky
