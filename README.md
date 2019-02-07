@@ -58,3 +58,4 @@ The body of the butterfly is animated vertically up and down according to a laye
 currPoint.y += pCurve(0.5 * sin(u_Speed * u_Time / 7.0) + 0.5, 2.0, 5.0) + 0.5 * pCurve(0.5 * sin(u_Speed * u_Time / 7.0) + 0.5, 6.0, 1.0);
 
 #### Sky
+To make the butterfly look as if it is flying forwards, I animated the x value of the point used to calcualte the sky shader by subtracting a scaled value of time from the x position. Time is scaled to animated the thinner pink clouds slower than the puffier white clouds to make it look like the pink clouds are further away and more stationary. 
