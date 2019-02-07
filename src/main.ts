@@ -1,4 +1,4 @@
-import {vec2, vec3} from 'gl-matrix';
+import {vec2, vec3, vec4} from 'gl-matrix';
 import * as Stats from 'stats-js';
 import * as DAT from 'dat-gui';
 import Square from './geometry/Square';
@@ -12,6 +12,10 @@ import ShaderProgram, {Shader} from './rendering/gl/ShaderProgram';
 const controls = {
   tesselations: 5,
   'Load Scene': loadScene, // A function pointer, essentially
+  speed: 1.0,
+  colorTip: "#e8df56",
+  colorMain: "#09c5ff",
+
 };
 
 let square: Square;
@@ -47,6 +51,11 @@ function main() {
 
   // Add controls to the gui
   const gui = new DAT.GUI();
+  gui.add(controls, 'speed', 0.5, 1.5).step(0.1);
+  gui.addColor(controls, 'colorTip');
+  gui.addColor(controls, 'colorMain');
+
+
 
   // get canvas and webgl context
   const canvas = <HTMLCanvasElement> document.getElementById('canvas');
@@ -61,7 +70,7 @@ function main() {
   // Initial call to load scene
   loadScene();
 
-  const camera = new Camera(vec3.fromValues(0, 8, -20), vec3.fromValues(0, 0, 0));
+  const camera = new Camera(vec3.fromValues(0, 10, -25), vec3.fromValues(0, 0, 0));
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(164.0 / 255.0, 233.0 / 255.0, 1.0, 1);
@@ -83,7 +92,17 @@ function main() {
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.clear();
     processKeyPresses();
-    renderer.render(camera, flat, [
+
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(controls.colorTip);
+    let rTip: number = parseInt(result[1], 16);
+    let gTip: number = parseInt(result[2], 16);
+    let bTip: number = parseInt(result[3], 16);
+
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(controls.colorMain);
+    let rMain: number = parseInt(result[1], 16);
+    let gMain: number = parseInt(result[2], 16);
+    let bMain: number = parseInt(result[3], 16);
+    renderer.render(controls.speed, vec4.fromValues(rTip / 255.0, gTip / 255.0, bTip / 255.0, 1.0), vec4.fromValues(rMain / 255.0, gMain / 255.0, bMain / 255.0, 1.0), camera, flat, [
       square,
     ], time);
     time++;

@@ -29,6 +29,10 @@ class ShaderProgram {
   unifUp: WebGLUniformLocation;
   unifDimensions: WebGLUniformLocation;
   unifTime: WebGLUniformLocation;
+  unifSpeed: WebGLUniformLocation;
+  unifColorTip: WebGLUniformLocation;
+  unifColorMain: WebGLUniformLocation;
+
 
   constructor(shaders: Array<Shader>) {
     this.prog = gl.createProgram();
@@ -47,6 +51,10 @@ class ShaderProgram {
     this.unifUp   = gl.getUniformLocation(this.prog, "u_Up");
     this.unifDimensions   = gl.getUniformLocation(this.prog, "u_Dimensions");
     this.unifTime   = gl.getUniformLocation(this.prog, "u_Time");
+    this.unifSpeed   = gl.getUniformLocation(this.prog, "u_Speed");
+    this.unifColorTip      = gl.getUniformLocation(this.prog, "u_ColorTip");
+    this.unifColorMain      = gl.getUniformLocation(this.prog, "u_ColorMain");
+
   }
 
   use() {
@@ -55,6 +63,20 @@ class ShaderProgram {
       activeProgram = this.prog;
     }
   }
+
+  setTipColor(color: vec4) {
+    this.use();
+    if (this.unifColorTip !== -1) {
+      gl.uniform4fv(this.unifColorTip, color);
+    }
+  }
+  setMainColor(color: vec4) {
+    this.use();
+    if (this.unifColorMain !== -1) {
+      gl.uniform4fv(this.unifColorMain, color);
+    }
+  }
+
 
   setEyeRefUp(eye: vec3, ref: vec3, up: vec3) {
     this.use();
@@ -80,6 +102,13 @@ class ShaderProgram {
     this.use();
     if(this.unifTime !== -1) {
       gl.uniform1f(this.unifTime, t);
+    }
+  }
+
+  setSpeed(t: number) {
+    this.use();
+    if(this.unifSpeed !== -1) {
+      gl.uniform1f(this.unifSpeed, t);
     }
   }
 

@@ -4,12 +4,17 @@ precision highp float;
 uniform vec3 u_Eye, u_Ref, u_Up;
 uniform vec2 u_Dimensions;
 uniform float u_Time;
+uniform vec4 u_ColorTip;
+uniform vec4 u_ColorMain;
+uniform float u_Speed;
 
 in vec2 fs_Pos;
 out vec4 out_Col;
 float epsilon = 0.0001;
 float pi = 3.1415926535;
 
+
+// Noise functions:
 float random1( vec2 p , vec2 seed) {
   return fract(sin(dot(p + seed, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -70,6 +75,7 @@ float interpNoise3d(float x, float y, float z) {
 
 }
 
+// Worley and FBM
 float computeWorley(float x, float y, float numRows, float numCols) {
     float xPos = x * float(numCols) / 20.f;
     float yPos = y * float(numRows) / 20.f;
@@ -90,21 +96,6 @@ float computeWorley(float x, float y, float numRows, float numCols) {
     }
     return minDist;
     // return 2.0;
-}
-
-float fbmWorley(float x, float y, float height, float xScale, float yScale) {
-  float total = 0.f;
-  float persistence = 0.5f;
-  int octaves = 4;
-  float freq = 2.0;
-  float amp = 1.0;
-  for (int i = 0; i < octaves; i++) {
-    // total += interpNoise2d( (x / xScale) * freq, (y / yScale) * freq) * amp;
-    total += computeWorley( (x / xScale) * freq, (y / yScale) * freq, 2.0, 2.0) * amp;
-    freq *= 2.0;
-    amp *= persistence;
-  }
-  return height * total;
 }
 
 float fbm(float x, float y, float height, float xScale, float yScale) {
@@ -138,6 +129,7 @@ float fbm3D(float x, float y, float z, float height, float xScale, float yScale,
 }
 
 
+// Ray Casting
 vec3 castRay(vec3 eye) {
   float a = fs_Pos.x;
   float b = fs_Pos.y;
@@ -152,6 +144,8 @@ vec3 castRay(vec3 eye) {
   return normalize(point);
 }
 
+
+// SDFS:
 float sphereSDF( vec3 p, float radius ) {
   return length(p)-radius;
 }
@@ -170,12 +164,6 @@ float roundConeSDF( in vec3 p, in float r1, float r2, float h )
     return dot(q, vec2(a,b) ) - r1;
 }
 
-float coneSDF( vec3 p, vec2 c )
-{
-    // c must be normalized
-    float q = length(p.xy);
-    return dot(c,vec2(q,p.z));
-}
 
 float boxSDF( vec3 p, vec3 b )
 {
@@ -184,22 +172,7 @@ float boxSDF( vec3 p, vec3 b )
          + min(max(d.x,max(d.y,d.z)),0.0); // remove this line for an only partially signed sdf 
 }
 
-float cappedConeSDF( in vec3 p, in float h, in float r1, in float r2 )
-{
-    vec2 q = vec2( length(p.xz), p.y );
-    
-    vec2 k1 = vec2(r2,h);
-    vec2 k2 = vec2(r2-r1,2.0*h);
-    vec2 ca = vec2(q.x-min(q.x,(q.y < 0.0)?r1:r2), abs(q.y)-h);
-    vec2 cb = q - k1 + k2*clamp( dot(k1-q,k2)/dot(k2, k2), 0.0, 1.0 );
-    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
-    return s*sqrt( min(dot(ca, ca),dot(cb, cb)) ) - 0.5;
-}
-float opSmoothUnion( float d1, float d2, float k ) {
-    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
-    return mix( d2, d1, h ) - k*h*(1.0-h); 
-}
-
+// Bounding sphere for BVH
 bool boundingSphereIntersect(vec3 dir, vec3 origin, vec3 center, float radius, out float dist) {
 
   float a = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z;
@@ -224,10 +197,12 @@ bool boundingSphereIntersect(vec3 dir, vec3 origin, vec3 center, float radius, o
   return false;
 }
 
+
+// Materials
 vec4 topWingColor(vec3 normal, vec3 point, vec3 dir) {
   float theta1 = pi / 2.0;
   float theta2 = pi;
-  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0));
   if (point.z < 0.0) {
     thetaAnim *= -1.0;
   }
@@ -237,7 +212,7 @@ vec4 topWingColor(vec3 normal, vec3 point, vec3 dir) {
                            );  
 
     point = ((point * wingAnimationRotation));
-    vec3 color1 = vec3(0.5, 0.8, 1.0);
+    vec3 color1 = u_ColorMain.rgb;
     float textureTheta = -pi/9.0;
     if (point.z < 0.0) {
       textureTheta *= -1.0;
@@ -252,7 +227,7 @@ vec4 topWingColor(vec3 normal, vec3 point, vec3 dir) {
     distFromCenter += 0.35 * (fbm(point.x, point.z, 1.0, 0.4, 0.4) * 2.0 - 1.0);
     color1 *= mask;
 
-    vec3 color2 = vec3(0.9, 0.5, 0.3);
+    vec3 color2 = u_ColorTip.rgb;
     // float mask2 = computeWorley(point.x, point.z, 100.0, 100.0);
     float mask2 = fbm3D(point.x, point.y, point.z, 1.0, 0.2, 0.2, 0.2);
     color2 *= mask2;
@@ -272,12 +247,12 @@ vec4 topWingColor(vec3 normal, vec3 point, vec3 dir) {
 }
 
 vec4 bottomWingColor(vec3 normal, vec3 point, vec3 dir) {
-  vec3 color1 = vec3(0.9, 0.5, 0.8);
-  vec3 color2 = vec3(0.7, 0.7, 0.4);
+  vec3 color1 = u_ColorMain.rgb;
+  vec3 color2 = u_ColorTip.rgb;
 
   float theta1 = pi / 2.0;
   float theta2 = pi;
-  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0));
   if (point.z < 0.0) {
     thetaAnim *= -1.0;
   }
@@ -309,10 +284,10 @@ vec4 bottomWingColor(vec3 normal, vec3 point, vec3 dir) {
     float mask2 = fbm3D(point.x, point.y, point.z, 1.0, 0.2, 0.2, 0.2);
     color2 *= mask2;
 
-    if (distFromCenter > 5.5 ) {
+    if (distFromCenter > 6.0 ) {
       color1 = color2;
     }
-    if (distFromCenter > 6.5 && distFromCenter < 7.0 || distFromCenter > 5.5 && distFromCenter < 6.0) {
+    if (distFromCenter > 7.0 && distFromCenter < 7.5 || distFromCenter > 6.0 && distFromCenter < 6.5) {
       color1 = vec3(0.0);
     }
 
@@ -322,17 +297,30 @@ vec4 bottomWingColor(vec3 normal, vec3 point, vec3 dir) {
     float lightIntensity = diffuseTerm + ambientTerm;
   return vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);
 }
-
 vec4 bodyColor(vec3 normal, vec3 point, vec3 dir) {
+  float reflectiveTerm = 1.2 * pow(abs(dot(normalize(normal), normalize(dir))), 80.0);
     vec4 diffuseColor = vec4(0.1, 0.1, 0.1, 1.0);
     float diffuseTerm = dot(normalize(normal), normalize(vec3(1.0, 0.5, -1.0)));
     float ambientTerm = 0.2;
     float lightIntensity = diffuseTerm + ambientTerm;
-  return vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);
+  return vec4(diffuseColor.rgb * lightIntensity + diffuseTerm * reflectiveTerm * vec3(0.8, 0.95, 1.0), diffuseColor.a);
   
 }
 
+vec4 backgroundColor() {
+    vec3 blueSky = vec3(0.3, 0.7, 1.0);
+    vec3 clouds1 = vec3(1.0, 1.0, 1.0);
+    float cloudMap1 = 1.5 - fbm(fs_Pos.x - u_Speed * u_Time / 120.0, fs_Pos.y, 1.0, 1.5, 1.0);
 
+    vec3 clouds2 = vec3(1.0, 0.8, 0.9);
+    float cloudMap2 = 1.0 * (1.0 - fbm(fs_Pos.x - u_Speed * u_Time / 800.0, fs_Pos.y, 1.0, 3.0, 1.0)) ;
+
+    vec3 finalColor = cloudMap1 * (clouds1) + (1.0 - cloudMap1) * (cloudMap2 * (clouds2) + (1.0 - cloudMap2) * blueSky);
+
+    return vec4(finalColor, 1.0);
+}
+
+// Normal calculation for sphere
 vec3 getSphereNormal(vec3 p, float t) {
   return normalize(vec3(  sphereSDF(vec3(p[0] + 0.001, p[1], p[2]), t) - sphereSDF(vec3(p[0] - 0.001, p[1], p[2]), t),
                           sphereSDF(vec3(p[0], p[1] + 0.001, p[2]), t) - sphereSDF(vec3(p[0], p[1] - 0.001, p[2]), t),
@@ -340,169 +328,29 @@ vec3 getSphereNormal(vec3 p, float t) {
                        ));
 }
 
-float headSDF(vec3 p) {
-  vec3 headInvTranslation = vec3(-2.8, -1.0, 0.0);
-
-  vec3 eye1InvTranslation = vec3(-4.2, -1.4, -1.1);  
-  vec3 eye2InvTranslation = vec3(-4.2, -1.4, 1.1);
-  vec3 eyeInvScale = vec3(0.9, 0.6, 0.75);
-
-  float headDistance = sphereSDF(p + headInvTranslation, 2.0);
-  vec3 finalTranslation = headInvTranslation;
-  vec3 finalScale = vec3(1.0, 1.0, 1.0);
-
-  float eye1Distance = sphereSDF((p + eye1InvTranslation) * eyeInvScale, 0.6);
-  float eye2Distance = sphereSDF((p + eye2InvTranslation) * eyeInvScale, 0.6);
-  headDistance = max(-eye1Distance, headDistance);
-  headDistance = max(-eye2Distance, headDistance);
-  return headDistance;
+// SDF Combinations
+float opSmoothUnion( float d1, float d2, float k ) {
+    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) - k*h*(1.0-h); 
+}
+float unionSDF(float d1, float d2) {
+  return min(d1, d2);
 }
 
-float bodySDF(vec3 p) {
-  // vec3 headNormal;
-  float headDistance = headSDF(p);
-
-  vec3 tailInvScale = vec3(0.3, 1.0, 1.0);
-  vec3 tailInvTranslation = vec3(4.2, 0.0, 0.0);
-
-  vec3 centerTranslation = vec3(0.0, -0.2, 0.0);
-
-  float centerDistance = sphereSDF(p + centerTranslation, 1.1);
-  float tailDistance = sphereSDF((p + tailInvTranslation) * tailInvScale, 1.0);
-
-  float k = 0.4;
-  float h = clamp( 0.5 + 0.5*(centerDistance-tailDistance)/k, 0.0, 1.0 );
-  float unionDistance = mix( centerDistance, tailDistance, h ) - k*h*(1.0-h); 
-
-  h = clamp( 0.5 + 0.5*(unionDistance-headDistance)/k, 0.0, 1.0 );
-  unionDistance = mix( unionDistance, headDistance, h ) - k*h*(1.0-h); 
-  return unionDistance;
+float opUnion( float d1, float d2 ) {  
+  return min(d1,d2); 
 }
 
-vec3 getBodyNormal(vec3 p) {
-  return normalize(vec3(  bodySDF(vec3(p[0] + 0.001, p[1], p[2])) - bodySDF(vec3(p[0] - 0.001, p[1], p[2])),
-                          bodySDF(vec3(p[0], p[1] + 0.001, p[2])) - bodySDF(vec3(p[0], p[1] - 0.001, p[2])),
-                          bodySDF(vec3(p[0], p[1], p[2] + 0.001)) - bodySDF(vec3(p[0], p[1], p[2] - 0.001))
-                       ));
+float opSubtraction( float d1, float d2 ) { 
+  return max(-d1,d2); 
 }
 
-float topRightWingSDF(vec3 p) {
-  float wingxTheta = -pi / 2.0 ;
-  mat3 wingxRotation = mat3(vec3(1, 0, 0),
-                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
-                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
-                           );
-  float wingzTheta = pi / 13.0;                         
-  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
-                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
-                           vec3(0, 0, 1)
-                           );
-  float theta1 = pi / 2.0;
-  float theta2 = pi;
-  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
-  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
-                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
-                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
-                           );  
-  vec3 wingInvTranslation = vec3(0.4, 5.0, 0.0);
-  vec3 wingScale = vec3(1.0, 1.0, 1.0);
-  float coneDist = roundConeSDF((((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale), 2.7, 0.2, 4.0);
-
-  vec3 boxTranslation = vec3(-0.25, -0.1, -3.0);
-
-  float boxDist = boxSDF((p * wingAnimationRotation + boxTranslation), vec3(6.0, 0.00001, 6.0));
-  // return coneDist;
-  return max(boxDist, coneDist) - 0.1;
+float opIntersection( float d1, float d2 ) { 
+  return max(d1,d2); 
 }
 
 
-float topLeftWingSDF(vec3 p) {
-  float wingxTheta = pi / 2.0 ;
-  mat3 wingxRotation = mat3(vec3(1, 0, 0),
-                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
-                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
-                           );
-  float wingzTheta = pi / 13.0;                         
-  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
-                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
-                           vec3(0, 0, 1)
-                           );
-  float theta1 = pi / 2.0;
-  float theta2 = pi;
-  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
-  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
-                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
-                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
-                           );  
-  vec3 wingInvTranslation = vec3(0.4, 5.0, 0.0);
-  vec3 wingScale = vec3(1.0, 1.0, 1.0);
-  float coneDist = roundConeSDF(((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale, 2.7, 0.2, 4.0);
-
-  vec3 boxTranslation = vec3(-0.25, -0.1, 3.0);
-
-  float boxDist = boxSDF(p * wingAnimationRotation + boxTranslation, vec3(6.0, 0.00001, 6.0));
-  // return coneDist;
-  return max(boxDist, coneDist) - 0.1;
-}
-
-float bottomRightWingSDF(vec3 p) {
-  float wingxTheta = -pi / 2.0 ;
-  mat3 wingxRotation = mat3(vec3(1, 0, 0),
-                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
-                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
-                           );
-  float wingzTheta = -pi / 3.65;                         
-  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
-                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
-                           vec3(0, 0, 1)
-                           );
-  float theta1 = pi / 2.0;
-  float theta2 = pi;
-  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
-  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
-                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
-                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
-                           );                           
-  vec3 wingInvTranslation = vec3(-0.4, 6.1, -0.2);
-  vec3 wingScale = vec3(1.0, 1.0, 1.0);
-  float coneDist = roundConeSDF(((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale, 2.9, 0.2, 5.0);
-
-  vec3 boxTranslation = vec3(1.2, -0.3, -3.0);
-
-  float boxDist = boxSDF(p * wingAnimationRotation + boxTranslation, vec3(7.0, 0.00001, 7.0));
-  // return coneDist;
-  return max(boxDist, coneDist) - 0.1;
-}
-
-float bottomLeftWingSDF(vec3 p) {
-  float wingxTheta = pi / 2.0 ;
-  mat3 wingxRotation = mat3(vec3(1, 0, 0),
-                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
-                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
-                           );
-  float wingzTheta = -pi / 3.65;                         
-  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
-                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
-                           vec3(0, 0, 1)
-                           );
-  float theta1 = pi / 2.0;
-  float theta2 = pi;
-  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Time /  2.0) + 1.0));
-  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
-                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
-                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
-                           );                              
-  vec3 wingInvTranslation = vec3(-0.4, 6.1, 0.2);
-  vec3 wingScale = vec3(1.0, 1.0, 1.0);
-  float coneDist = roundConeSDF(((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale, 2.9, 0.2, 5.0);
-
-  vec3 boxTranslation = vec3(1.2, -0.3, 3.0);
-
-  float boxDist = boxSDF(p * wingAnimationRotation + boxTranslation, vec3(7.0, 0.00001, 7.0));
-  // return coneDist;
-  return max(boxDist, coneDist) - 0.1;
-}
-
+// Bounding Spheres for components for BVH
 bool topLeftBoudningSphere(vec3 dir, vec3 origin, out float dist) {
   vec3 center = vec3(1.0, 1.0, -5.5);
   float radius = 4.9;
@@ -528,72 +376,11 @@ bool bottomRightBoudningSphere(vec3 dir, vec3 origin, out float dist) {
   return boundingSphereIntersect(dir, origin, center, radius, dist);
 }
 
-float topWingSDF(vec3 dir, vec3 p) {
-  float topRightDist = topRightWingSDF(p);
-  float topLeftDist = topLeftWingSDF(p);
-  float testDist;
-  if (!topRightBoudningSphere(dir, u_Eye, testDist)) {
-    topRightDist = 10000.0;
-  }
-
-  if (!topLeftBoudningSphere(dir, u_Eye, testDist)) {
-    topLeftDist = 10000.0;
-  }
-  return min(topRightDist, topLeftDist);
-}
-
-float bottomWingSDF(vec3 dir, vec3 p) {
-  float bottomRightDist = bottomRightWingSDF(p);
-  float bottomLeftDist = bottomLeftWingSDF(p);
-  float testDist;
-  if (!bottomRightBoudningSphere(dir, u_Eye, testDist)) {
-    bottomRightDist = 10000.0;
-  }
-
-  if (!bottomLeftBoudningSphere(dir, u_Eye, testDist)) {
-    bottomLeftDist = 10000.0;
-  }
-  return min(bottomRightDist, bottomLeftDist);
-}
-
-vec3 getTopWingNormal(vec3 dir, vec3 p) { 
-  return normalize(vec3(  topWingSDF(dir, vec3(p[0] + 0.001, p[1], p[2])) - topWingSDF(dir, vec3(p[0] - 0.001, p[1], p[2])),
-                          topWingSDF(dir, vec3(p[0], p[1] + 0.001, p[2])) - topWingSDF(dir, vec3(p[0], p[1] - 0.001, p[2])),
-                          topWingSDF(dir, vec3(p[0], p[1], p[2] + 0.001)) - topWingSDF(dir, vec3(p[0], p[1], p[2] - 0.001))
-                       ));
-}
-
-vec3 getBottomWingNormal(vec3 dir, vec3 p) {
-  return normalize(vec3(  bottomWingSDF(dir, vec3(p[0] + 0.001, p[1], p[2])) - bottomWingSDF(dir, vec3(p[0] - 0.001, p[1], p[2])),
-                          bottomWingSDF(dir, vec3(p[0], p[1] + 0.001, p[2])) - bottomWingSDF(dir, vec3(p[0], p[1] - 0.001, p[2])),
-                          bottomWingSDF(dir, vec3(p[0], p[1], p[2] + 0.001)) - bottomWingSDF(dir, vec3(p[0], p[1], p[2] - 0.001))
-                       ));
-}
-
-
-
-float unionSDF(float d1, float d2) {
-  return min(d1, d2);
-}
-
-float opUnion( float d1, float d2 ) {  
-  return min(d1,d2); 
-}
-
-float opSubtraction( float d1, float d2 ) { 
-  return max(-d1,d2); 
-}
-
-float opIntersection( float d1, float d2 ) { 
-  return max(d1,d2); 
-}
-
 bool sceneBoundingSphere(vec3 dir, vec3 origin, out float dist) {
   vec3 center = vec3(-1.5, 0, 0);
   float radius = 9.0;
   return boundingSphereIntersect(dir, origin, center, radius, dist);
 }
-
 
 bool topWingBoudningSphere(vec3 dir, vec3 origin, out float dist) {
   vec3 center = vec3(2.0, 0, 0);
@@ -613,11 +400,228 @@ bool bodyBoudningSphere(vec3 dir, vec3 origin, out float dist) {
   return boundingSphereIntersect(dir, origin, center, radius, dist);
 }
 
-float sceneSDF(vec3 dir, vec3 p, out vec3 nor, out vec4 col) {
-  float topWingDistance = topWingSDF(dir, p);
-  float bottomWingDistance = bottomWingSDF(dir, p);
-  float bodyDistance = bodySDF(p);
+// Component SDFS:
+float headSDF(vec3 p) {
+  vec3 headInvTranslation = vec3(-2.8, -1.0, 0.0);
 
+  vec3 eye1InvTranslation = vec3(-4.2, -1.4, -1.1);  
+  vec3 eye2InvTranslation = vec3(-4.2, -1.4, 1.1);
+  vec3 eyeInvScale = vec3(0.9, 0.6, 0.75);
+
+  float headDistance = sphereSDF(p + headInvTranslation, 2.0);
+  vec3 finalTranslation = headInvTranslation;
+  vec3 finalScale = vec3(1.0, 1.0, 1.0);
+
+  float eye1Distance = sphereSDF((p + eye1InvTranslation) * eyeInvScale, 0.6);
+  float eye2Distance = sphereSDF((p + eye2InvTranslation) * eyeInvScale, 0.6);
+  // headDistance = max(-eye1Distance, headDistance);
+  // headDistance = max(-eye2Distance, headDistance);
+  headDistance = opSubtraction(eye1Distance, headDistance);
+  headDistance = opSubtraction(eye2Distance, headDistance);
+  return headDistance;
+}
+
+float bodySDF(vec3 p) {
+  // vec3 headNormal;
+  float headDistance = headSDF(p);
+
+  vec3 tailInvScale = vec3(0.3, 1.0, 1.0);
+  vec3 tailInvTranslation = vec3(4.2, 0.0, 0.0);
+  vec3 tailBumpTranslation = -0.3 * pow(clamp(sin(p.x * 9.0), 0.0, 1.0) + 0.5, 0.1) * getSphereNormal((p + tailInvTranslation) * tailInvScale, 1.0);
+
+  vec3 centerBumpTranslation = -0.3 * pow(clamp(sin(p.x * 9.0), 0.0, 1.0) + 0.5, 0.1) * getSphereNormal((p + tailInvTranslation) * tailInvScale, 1.0);
+
+
+  vec3 centerTranslation = vec3(0.0, -0.2, 0.0);
+
+  float centerDistance = sphereSDF(p + centerTranslation, 1.1);
+  float tailDistance = sphereSDF((p + tailInvTranslation + tailBumpTranslation) * tailInvScale, 1.0);
+
+  float k = 0.6;
+  float unionDistance = opSmoothUnion(centerDistance, tailDistance, k);
+  unionDistance = opSmoothUnion(unionDistance, headDistance, k);
+  return unionDistance;
+}
+
+float topRightWingSDF(vec3 p) {
+  // p.y += mix(-0.2, 0.2, fbm3D(p.x + (u_Time / 5.0), p.y, p.z, 1.0, 2.0, 2.0, 4.0));
+
+  float wingxTheta = -pi / 2.0 ;
+  mat3 wingxRotation = mat3(vec3(1, 0, 0),
+                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
+                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
+                           );
+  float wingzTheta = pi / 13.0;                         
+  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
+                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
+                           vec3(0, 0, 1)
+                           );
+  float theta1 = pi / 2.0;
+  float theta2 = pi;
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0));
+  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
+                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
+                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
+                           );  
+  vec3 wingInvTranslation = vec3(0.4, 5.0, 0.0);
+  vec3 wingScale = vec3(1.0, 1.0, 1.0);
+  float coneDist = roundConeSDF((((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale), 2.7, 0.2, 4.0);
+
+  vec3 boxTranslation = vec3(-0.25, -0.1, -3.0);
+
+  float boxDist = boxSDF((p * wingAnimationRotation + boxTranslation), vec3(6.0, 0.04, 6.0));
+  // return coneDist;
+  // return max(boxDist, coneDist);
+  return opIntersection(boxDist, coneDist);
+}
+float topLeftWingSDF(vec3 p) {
+  // p.y += mix(-0.2, 0.2, fbm3D(p.x + (u_Time / 5.0), p.y, p.z, 1.0, 2.0, 2.0, 4.0));
+  float wingxTheta = pi / 2.0 ;
+  mat3 wingxRotation = mat3(vec3(1, 0, 0),
+                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
+                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
+                           );
+  float wingzTheta = pi / 13.0;                         
+  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
+                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
+                           vec3(0, 0, 1)
+                           );
+  float theta1 = pi / 2.0;
+  float theta2 = pi;
+  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0));
+  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
+                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
+                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
+                           );  
+  vec3 wingInvTranslation = vec3(0.4, 5.0, 0.0);
+  vec3 wingScale = vec3(1.0, 1.0, 1.0);
+  float coneDist = roundConeSDF(((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale, 2.7, 0.2, 4.0);
+
+  vec3 boxTranslation = vec3(-0.25, -0.1, 3.0);
+
+  float boxDist = boxSDF(p * wingAnimationRotation + boxTranslation, vec3(6.0, 0.04, 6.0));
+  // return coneDist;
+  return opIntersection(boxDist, coneDist);
+}
+
+float bottomRightWingSDF(vec3 p) {
+  // p.y += mix(-0.2, 0.2, fbm3D(p.x + (u_Time / 5.0), p.y, p.z, 1.0, 2.0, 2.0, 4.0));
+  float wingxTheta = -pi / 2.0 ;
+  mat3 wingxRotation = mat3(vec3(1, 0, 0),
+                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
+                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
+                           );
+  float wingzTheta = -pi / 3.65;                         
+  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
+                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
+                           vec3(0, 0, 1)
+                           );
+  float theta1 = pi / 2.0;
+  float theta2 = pi;
+  float thetaAnim = -smoothstep(-theta1, theta2,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0));
+  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
+                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
+                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
+                           );                           
+  vec3 wingInvTranslation = vec3(-0.4, 6.1, -0.2);
+  vec3 wingScale = vec3(1.0, 1.0, 1.0);
+  float coneDist = roundConeSDF(((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale, 2.9, 0.2, 5.0);
+
+  vec3 boxTranslation = vec3(1.2, -0.3, -3.0);
+
+  float boxDist = boxSDF(p * wingAnimationRotation + boxTranslation, vec3(7.0, 0.04, 7.0));
+  // return coneDist;
+  return opIntersection(boxDist, coneDist);
+}
+
+float bottomLeftWingSDF(vec3 p) {
+  // p.y += mix(-0.2, 0.2, fbm3D(p.x + (u_Time / 5.0), p.y, p.z, 1.0, 2.0, 2.0, 4.0));
+  float wingxTheta = pi / 2.0 ;
+  mat3 wingxRotation = mat3(vec3(1, 0, 0),
+                           vec3(0, cos(wingxTheta), sin(wingxTheta)),
+                           vec3(0, -sin(wingxTheta), cos(wingxTheta))
+                           );
+  float wingzTheta = -pi / 3.65;                         
+  mat3 wingzRotation = mat3(vec3(cos(wingzTheta), sin(wingzTheta), 0),
+                           vec3(-sin(wingzTheta), cos(wingzTheta), 0),
+                           vec3(0, 0, 1)
+                           );
+  float theta1 = pi / 2.0;
+  float theta2 = pi;
+  float thetaAnim = smoothstep(-theta1, theta2,  0.5 * (sin(u_Speed * u_Time /  1.5) + 1.0));
+  mat3 wingAnimationRotation = mat3(vec3(1, 0, 0),
+                                    vec3(0, cos(thetaAnim), sin(thetaAnim)),
+                                    vec3(0, -sin(thetaAnim), cos(thetaAnim))
+                           );                              
+  vec3 wingInvTranslation = vec3(-0.4, 6.1, 0.2);
+  vec3 wingScale = vec3(1.0, 1.0, 1.0);
+  float coneDist = roundConeSDF(((p * wingAnimationRotation * wingxRotation * wingzRotation) + wingInvTranslation) * wingScale, 2.9, 0.2, 5.0);
+
+  vec3 boxTranslation = vec3(1.2, -0.3, 3.0);
+
+  float boxDist = boxSDF(p * wingAnimationRotation + boxTranslation, vec3(7.0, 0.04, 7.0));
+  // return coneDist;
+  return opIntersection(boxDist, coneDist);
+}
+
+float topWingSDF(vec3 dir, vec3 p) {
+  float topRightDist = topRightWingSDF(p);
+  float topLeftDist = topLeftWingSDF(p);
+  float testDist;
+  if (!topRightBoudningSphere(dir, u_Eye, testDist)) {
+    topRightDist = 10000.0;
+  }
+
+  if (!topLeftBoudningSphere(dir, u_Eye, testDist)) {
+    topLeftDist = 10000.0;
+  }
+  return opUnion(topRightDist, topLeftDist);
+}
+
+float bottomWingSDF(vec3 dir, vec3 p) {
+  float bottomRightDist = bottomRightWingSDF(p);
+  float bottomLeftDist = bottomLeftWingSDF(p);
+  float testDist;
+  if (!bottomRightBoudningSphere(dir, u_Eye, testDist)) {
+    bottomRightDist = 10000.0;
+  }
+
+  if (!bottomLeftBoudningSphere(dir, u_Eye, testDist)) {
+    bottomLeftDist = 10000.0;
+  }
+  return opUnion(bottomRightDist, bottomLeftDist);
+}
+
+
+// Normal Calculations
+vec3 getBodyNormal(vec3 p) {
+  return normalize(vec3(  bodySDF(vec3(p[0] + 0.001, p[1], p[2])) - bodySDF(vec3(p[0] - 0.001, p[1], p[2])),
+                          bodySDF(vec3(p[0], p[1] + 0.001, p[2])) - bodySDF(vec3(p[0], p[1] - 0.001, p[2])),
+                          bodySDF(vec3(p[0], p[1], p[2] + 0.001)) - bodySDF(vec3(p[0], p[1], p[2] - 0.001))
+                       ));
+}
+
+vec3 getTopWingNormal(vec3 dir, vec3 p) { 
+  return normalize(vec3(  topWingSDF(dir, vec3(p[0] + 0.001, p[1], p[2])) - topWingSDF(dir, vec3(p[0] - 0.001, p[1], p[2])),
+                          topWingSDF(dir, vec3(p[0], p[1] + 0.001, p[2])) - topWingSDF(dir, vec3(p[0], p[1] - 0.001, p[2])),
+                          topWingSDF(dir, vec3(p[0], p[1], p[2] + 0.001)) - topWingSDF(dir, vec3(p[0], p[1], p[2] - 0.001))
+                       ));
+}
+
+vec3 getBottomWingNormal(vec3 dir, vec3 p) {
+  return normalize(vec3(  bottomWingSDF(dir, vec3(p[0] + 0.001, p[1], p[2])) - bottomWingSDF(dir, vec3(p[0] - 0.001, p[1], p[2])),
+                          bottomWingSDF(dir, vec3(p[0], p[1] + 0.001, p[2])) - bottomWingSDF(dir, vec3(p[0], p[1] - 0.001, p[2])),
+                          bottomWingSDF(dir, vec3(p[0], p[1], p[2] + 0.001)) - bottomWingSDF(dir, vec3(p[0], p[1], p[2] - 0.001))
+                       ));
+}
+
+// Full Scene SDF calculation
+float sceneSDF(vec3 dir, vec3 p, out vec3 nor, out vec4 col) {
+  vec3 wingPoint = p;
+  wingPoint.y += mix(-0.2, 0.2, fbm3D(p.x + (u_Speed * u_Time / 2.0), p.y, p.z, 1.0, 5.0, 30.0, 15.0));
+  float topWingDistance = topWingSDF(dir, wingPoint);
+  float bottomWingDistance = bottomWingSDF(dir, wingPoint);
+  float bodyDistance = bodySDF(p);
 
   float testDistance;
   if (!topWingBoudningSphere(dir, u_Eye, testDistance)) {
@@ -626,32 +630,31 @@ float sceneSDF(vec3 dir, vec3 p, out vec3 nor, out vec4 col) {
   if (!bottomWingBoudningSphere(dir, u_Eye, testDistance)) {
     bottomWingDistance = 10000.0;
   }
-
   if (!bodyBoudningSphere(dir, u_Eye, testDistance)) {
     bodyDistance = 10000.0;
   }
-
-
   if (topWingDistance < bodyDistance && topWingDistance < bottomWingDistance) {
-    nor = getTopWingNormal(dir, p);
-    col = topWingColor(nor, p, dir);
+    nor = getTopWingNormal(dir, wingPoint);
+    col = topWingColor(nor, wingPoint, dir);
     return topWingDistance;
   } else if (bodyDistance < bottomWingDistance){
     nor = getBodyNormal(p);
     col = bodyColor(nor, p, dir);
     return bodyDistance;
   } else {
-    nor = getBottomWingNormal(dir, p);
-    col = bottomWingColor(nor, p, dir);
+    nor = getBottomWingNormal(dir, wingPoint);
+    col = bottomWingColor(nor, wingPoint, dir);
     return bottomWingDistance;
   }
 }
 
+// Power curve for animation
 float pCurve (float x, float a, float b) {
   float k = pow(a + b, a + b) / (pow(a, a) * pow(b, b));
   return k * pow(x, a) * pow(1.0 - x, b);
 }
 
+// Ray March scene
 bool rayMarch(vec3 dir, out vec3 nor, out vec4 col) {
 
   float depth = 0.0;
@@ -662,15 +665,10 @@ bool rayMarch(vec3 dir, out vec3 nor, out vec4 col) {
     return false;
   }
 
-  for (int i = 0; i < 200; i++) {
+  for (int i = 0; i < 250; i++) {
     vec3 currPoint = u_Eye + depth * dir;
-    // currPoint.y += sin(u_Time / 10.0);
-    // break up a and b with some noise
-    currPoint.y += pCurve(0.5 * sin(u_Time / 10.0) + 0.5, 2.0, 4.0);
 
-    // float yOffset1 = 3.0;
-
-    // float gain = 0.0;
+    currPoint.y += pCurve(0.5 * sin(u_Speed * u_Time / 7.0) + 0.5, 2.0, 5.0) + 0.5 * pCurve(0.5 * sin(u_Speed * u_Time / 7.0) + 0.5, 6.0, 1.0);
 
     vec3 normal;
     dist = sceneSDF(dir, currPoint, normal, col);
@@ -679,7 +677,7 @@ bool rayMarch(vec3 dir, out vec3 nor, out vec4 col) {
         return true;
     }
     depth += dist;
-    if (depth > 30.0) {
+    if (depth > 50.0) {
       nor = vec3(0.0, 0.0, 0.0);
       return false;
     }
@@ -689,14 +687,14 @@ bool rayMarch(vec3 dir, out vec3 nor, out vec4 col) {
 
 }
 
+// display scene
 void main() {
   vec3 normal = vec3(1.0, 1.0, 1.0);
   vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
   if (rayMarch(castRay(u_Eye), normal, color)) {
     out_Col = color;
   } else {
-    out_Col = vec4(0.5 * (castRay(u_Eye) + vec3(1.0, 1.0, 1.0)), 1.0);
-    // out_Col = vec4(0.5, 0.5, 0.5, 1.0);
+    out_Col = backgroundColor();
   }
 
 }
