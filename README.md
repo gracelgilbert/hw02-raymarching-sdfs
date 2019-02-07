@@ -1,8 +1,8 @@
 # Grace Gilbert (gracegi)
+![](MainImage.png)
 
 ## Demo Link
 <https://gracelgilbert.github.io/hw02-raymarching-sdfs/>
-![](MainImage.png)
 
 ## External Resources
 - For the SDF functions, both the shape equations and the combination of SDF functions, I used functions from Inigo Quilez's blog:
@@ -34,7 +34,11 @@ One thing I could improve in my optimization method is to use a boudning box ins
 ### Materials
 I created three textures for the butterfly, one for the body, one for the wings, and one for the sky. To determine which color to output, the scene SDF function outputs a color value depending on what geometry it hits. If it does not hit any geometry, then the sky color is output. To ensure that the textures do not appear to be moving as the butterfly moves, I transformed the position vectors used to calculate the material values by the same transformations I used to animate the butterfly, thereby ensuring that the textures animate with the butterfly so they do not look as if they are sliding along its surface.
 - The body texture uses the normals of the form to create lambertian shading. On top of that, there the material is shiny. To do this, I took the dot product of the ray direction and the normal and used this to scale the base lambertian shading color. The closer the two directions are to being parallel, the bright the color. I raised the brightness scale to a larger power to sharpen the highlights so that they did not spread throughout the shape.
-- The wings are made up of three sections. The main part is a stepped worley noise pattern. After calculating worley noise, I scaled it by a stepped function with 12 steps. This gave a cool looking effect. I rotated the worley cells to line up with the direction of the wing. To do this, instead of inputting the actual coordinates of the wing into the worley noise computation, I rotated the points, in effect rotating the pattern. The pattern on the outer edges of the wings is a 3D fbm noise pattern at a small scale. I chose to use a 3D fbm so that the little edge of the wing would not have stretching from a 2D texture. I applied this second texture at every point past a distance of 6.0 from the origin. To merge between these two textures, I added two concentric black stripes between a distance 6.0 and 7.5 away from the origin. To soften the edges of these stripes, I offset the x and z positions used to calculate the distance from the center by an fbm noise function, creating a rougher edge that bleeds into the next texture. The colors of the two sections of the wings are modifiable by the user using two color pickers. 
+- The wings are made up of three sections. The main part is a stepped worley noise pattern. After calculating worley noise, I scaled it by a stepped function with 12 steps. This gave a cool looking effect. I rotated the worley cells to line up with the direction of the wing. To do this, instead of inputting the actual coordinates of the wing into the worley noise computation, I rotated the points, in effect rotating the pattern. The pattern on the outer edges of the wings is a 3D fbm noise pattern at a small scale. I chose to use a 3D fbm so that the little edge of the wing would not have stretching from a 2D texture. I applied this second texture at every point past a distance of 6.0 from the origin. To merge between these two textures, I added two concentric black stripes between a distance 6.0 and 7.5 away from the origin. To soften the edges of these stripes, I offset the x and z positions used to calculate the distance from the center by an fbm noise function, creating a rougher edge that bleeds into the next texture. The colors of the two sections of the wings are modifiable by the user using two color pickers. Variations of the colors can be seen below:
+![](Color1.png)
+
+![](Color2.png)
+
 - The sky texture is a layering of two fbm functions that map out two slightly different shades and shapes of clouds on top of a blue backdrop. One fbm function is very elongated in the x direction, creating longer, thin clouds. These have a pink hue. I scaled down the contribution of these to make them somewhat subtle. Layered on top of these clouds are larger, less elongated white clouds. These clouds look puffier and fuller and are more prominent. 
 ### Animation
 #### Wings
